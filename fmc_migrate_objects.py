@@ -1,4 +1,4 @@
-import fmc
+import fmc  # Firepower Management Center (FMC) 6.1 API
 import sys
 import logging
 
@@ -57,7 +57,8 @@ def main():
                     obj_new = fmc.FPObject(fmc_new, obj=obj_old)
                     print "{}: new_id {}".format(obj_new.name, obj_new.id)
 
-    print "Done running..."
+    # End of with block
+    print("Done running...")
     
 # Standard boilerplate to call main() function.
 if __name__ == "__main__":

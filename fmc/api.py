@@ -138,7 +138,7 @@ class FMC(FMCRestClient):
         for obj_type in self.OBJECT_TYPES:
             self.obj_tables[obj_type] = FPObjectTable(self, type=obj_type)
 
-    def _req_json(self, resource, type=None, oid=None, url=None, data=None):
+    def _req_json(self, resource, type, oid=None, url=None, data=None):
         """
         Simple wrapper for _req with more options to make it resource
         agnostic and reusable in different classes
@@ -151,9 +151,7 @@ class FMC(FMCRestClient):
             resp = self._req(url)
         elif data:                      # Create resource using the data
             url = self.url + self.API_PATH[resource] + type
-            logging.warning(
-                "Creating new {} {}: {}!".
-                format(type, resource, data['name']))
+            logging.warning("Creating new {} {}: {}!".format(type, resource, data['name']))
             resp = self._req(url, method='POST', data=data)
         return resp
 
@@ -178,8 +176,8 @@ class FMC(FMCRestClient):
 
     def get_access_policy(self, oid):
         url = self.url + self.API_PATH['devices'] + 'accesspolicies/' + oid
-        json_ac = self._req(url)
-        return json_ac
+        resp = self._req(url)
+        return resp
 
     def get_all_policies(self, type):
         # Yield a policy at a time
@@ -241,13 +239,13 @@ class FPResourceTable(object):
         """
         Build the 'names' dictionary for this table.
         names = {
-            'object1_name': 'object1_id',
-            'object2_name': 'object2_id'
+            'resource1_name': 'resource1_id',
+            'resource2_name': 'resource2_id'
             }
         """
         # Fetch the first page. By default,
         # URL = url + '?offset=0&limit=25&expanded=false'
-        logger.info("Building names dictionary for {} objects".format(self.type))
+        logger.info("Building names dictionary for {} {}s".format(self.type, self.resource))
         _fmc = self.fmc
         url = _fmc.url + _fmc.API_PATH[self.resource] + self.type + '?expanded=true'
         while url:  # True at least first page
@@ -256,9 +254,10 @@ class FPResourceTable(object):
                 return
             if resp['paging']['count'] == 0:  # Return if no resource found
                 return
+
             for obj_json in resp['items']:
-                # Make sure children names are listed before parent
-                self.build_child_first(obj_json)
+                self.names[obj_json['name']] = obj_json['id']
+
             # Move to next page
             if 'next' in resp['paging'].keys():
                 url = resp['paging']['next'][0]
@@ -269,20 +268,7 @@ class FPResourceTable(object):
             else:
                 url = None
         logger.debug(self.names)
-
-    def build_child_first(self, obj_json):
-        if obj_json.get("objects") is not None:
-            for ch_item in obj_json["objects"]:
-                ch_type = ch_item['type'].lower() + 's'
-                if self.type == ch_type:
-                    logger.debug("Founded nested child {}".format(ch_item['name']))
-                    # ch_obj = FPObject(self.fmc, type=self.type, oid=ch_item["id"])
-                    ch_json = self.fmc._req_json(resource=self.resource, type=self.type, oid=ch_item["id"])
-                    # recursion for multi-level nesting - child-first order
-                    self.build_child_first(ch_json)
-        if self.names.get(obj_json['name']) is None:
-            self.names[obj_json['name']] = obj_json['id']
-# End of FPObjectTable class
+# End of FPResourceTable class
 
 
 class FPObjectTable(FPResourceTable):
@@ -321,96 +307,91 @@ class FPObjectTable(FPResourceTable):
         hosts hosts2_name hosts2_id
         """
         for obj_json in super(self.__class__, self).__iter__():
-            fp_obj = FPObject(self.fmc, type=self.type, json=obj_json)
+            fp_obj = FPObject(self.fmc, self.type, json=obj_json)
             yield fp_obj
 
+    def build(self):
+        """
+        Build the 'names' dictionary for this table.
+        names = {
+            'object1_name': 'object1_id',
+            'object2_name': 'object2_id'
+            }
+        """
+        # Fetch the first page. By default,
+        # URL = url + '?offset=0&limit=25&expanded=false'
+        logger.info("Building names dictionary for {} {}s".format(self.type, self.resource))
+        _fmc = self.fmc
+        url = _fmc.url + _fmc.API_PATH[self.resource] + self.type + '?expanded=true'
+        while url:  # True at least first page
+            resp = _fmc._req(url)
+            if not len(resp):  # Return if no resource found
+                return
+            if resp['paging']['count'] == 0:  # Return if no resource found
+                return
+            for obj_json in resp['items']:
+                # Make sure children names are listed before parent
+                self.build_child_first(obj_json)
+            # Move to next page
+            if 'next' in resp['paging'].keys():
+                url = resp['paging']['next'][0]
+                # DEFECT: FMC 6.1 does not preserve 'expanded=true' in subsequent URLs
+                if 'expanded=true' not in url:
+                    url += '&expanded=true'
+                    # resp = _fmc._req(url)
+            else:
+                url = None
+        logger.debug(self.names)
 
-# Generic Object related class and methods
+    def build_child_first(self, obj_json):
+        if obj_json.get("objects") is not None:
+            for ch_item in obj_json["objects"]:
+                ch_type = ch_item['type'].lower() + 's'
+                if self.type == ch_type:
+                    logger.debug("Found nested child {}".format(ch_item['name']))
+                    ch_json = self.fmc._req_json(self.resource, type=self.type, oid=ch_item["id"])
+                    # recursion for multi-level nesting - child-first order
+                    self.build_child_first(ch_json)
+        if self.names.get(obj_json['name']) is None:
+            self.names[obj_json['name']] = obj_json['id']
+# End of FPObjectTable class
+
+
 class FPResource(object):
     def __init__(
-            self, fmc, resource, type=None, json=None, oid=None,
-            url=None, data=None, obj=None):
+            self, fmc, resource, type, oid=None,
+            url=None, data=None, json=None):
         """
-        FMC Object Manager API
+        FMC Generic Resource Manager API
 
         :param fmc: FMC server object :class:`FMC` object.
         :param resource: FMC Resource
         :param type: Object type supported by Cisco FMC 6.1.0.
-        :param json: (optional) Full object definition in :class dict:
-            format.
+        :param json: (optional) Full object definition in :class dict: format.
         :param oid: (optional) Object ID, GET the object if provided.
-        :param url: (optional) URL for the object, GET the object if
-            provided.
-        :param data: (optional) Data that will be accpeted by Cisco FMC
+        :param url: (optional) URL for the object, GET the object if provided.
+        :param data: (optional) Data that will be accepted by Cisco FMC
             to create object when POST method is used.
-        :param obj: (optional) Another :class: FPObject to duplicate.
-            This is useful when migrating objects between different FMC
-            servers.
         """
-
-        if not (oid or url or data or obj or json):
-            logger.fatal("Cannot get FPObject with empty parameters")
+        if not (oid or name or url or data or json):
+            logger.fatal("Cannot get FPResource with empty parameters")
             return
         self.fmc = fmc
         self.resource = resource
-        if type and json:
-            # Populate the object when '?expanded=true' is used in URL
-            self.type = type
-            self.json = json
-            # Update names dictionary
-            obj_names = self.fmc.obj_tables[self.type].names
-            obj_names[self.name] = self.id
-            return
-        self.json = None
+        self.type = type
 
-        if obj:
-            # This option helps duplicating objects from one FMC to
-            # another FMC
-            self.type = obj.type
-            if obj.name in self.fmc.obj_tables[self.type].names.keys():
-                logging.warning(
-                    "{}: Object name {} already exists!".format(self.fmc.url, obj.name))
-                # Fetch the existing object using known object ID
-                oid = self.fmc.obj_tables[self.type].names[obj.name]
-            else:
-                data = obj.json.copy()
-                for obj_key in ['id', 'links', 'metadata']:
-                    data.pop(obj_key)
-                if 'objects' in data.keys():
-                    # Update child object IDs
-                    for child_obj in data['objects']:
-                        # Host -> hosts, Range -> ranges, Url -> urls
-                        child_type = child_obj['type'].lower() + 's'
-                        # Assumption is that the dictionary of 'name':'id'
-                        # mapping is already populated
-                        child_names = self.fmc.obj_tables[child_type].names
-                        child_obj['id'] = child_names[child_obj['name']]
-        elif type is not None and (type in self.fmc.OBJECT_TYPES):
-            # If 'obj' is provided, then ignore 'type' parameter
-            self.type = type
-        else:
-            logging.fatal("Object type not defined!!")
-
-        resp = self._req_json(type=self.type, oid=oid, url=url, data=data)
+        resp = self.fmc._req_json(self.resource, type=self.type, oid=oid, url=url, data=data)
 
         if len(resp):
             # True only if GET/POST operation was successful
             # DEFECT: POST/PUT response does NOT have description in it!!
             self.json = resp
-            # Update names dictionary
-            obj_names = self.fmc.obj_tables[self.type].names
-            obj_names[self.name] = self.id
         else:
             if data.get('name') is not None:
-                logging.error(
-                    "Creating new {} object: {}! FAILED!!".
-                        format(self.type, data['name']))
+                logging.error("Creating new {} object: {}! FAILED!!".format(self.type, data['name']))
             else:
-                logging.error(
-                    "FAILED to get {} object: {}!!".
-                        format(self.type, obj.name))
+                logging.error("FAILED to get {} object: {}!!".format(self.type, obj.name))
             return  # new object is not added to the dictionary
-
     # End of FPObject.__init__
 
     @property
@@ -432,44 +413,27 @@ class FPResource(object):
         return "{}(type={}, name={}, id={})".format(
             self.__class__.__name__, self.type, self.name, self.id)
 
-    def _req_json(self, oid=None, url=None, data=None):
-        """
-        Simple wrapper for _req with more options to make it resource
-        agnostic and reusable in different classes
-        """
-        if oid:  # Fetch the resource using instance ID
-            url = self.fmc.url + self.fmc.API_PATH[self.resource] + self.type + '/' + oid
 
-        resp = ''
-        if url:  # Fetch the resource using the URL
-            resp = self._req(url)
-        elif data:  # Create resource using the data
-            url = self.url + self.API_PATH[self.resource] + type
-            logging.warning("Creating new {} {}: {}!".format(type, self.resource, data['name']))
-            resp = self._req(url, method='POST', data=data)
-        return resp
-
-
-# Generic Object related class and methods
 class FPObject(FPResource):
+    """
+    Generic Object related class and methods.
+    """
     def __init__(
-            self, fmc, type=None, json=None, oid=None, 
-            url=None, data=None, obj=None, name=None):
+            self, fmc, type=None, oid=None, name=None,
+            url=None, json=None, data=None, obj=None):
         """
         FMC Object Manager API
         
         :param fmc: FMC server object :class:`FMC` object.
-        :param type: Object type supported by Cisco FMC 6.1.0.
-        :param json: (optional) Full object definition in :class dict: 
-            format.
-        :param oid: (optional) Object ID, GET the object if provided.
-        :param url: (optional) URL for the object, GET the object if 
-            provided.
+        :param type: (optional) Object type supported by Cisco FMC 6.1.0.
+        :param oid: (optional) Object ID, GET the object, if provided.
+        :param name: (optional) Object Name, GET the object, if provided.
+        :param url: (optional) URL for the object, GET the object if provided.
+        :param json: (optional) Full object definition in :class dict: format.
         :param data: (optional) Data that will be accpeted by Cisco FMC
             to create object when POST method is used.
         :param obj: (optional) Another :class: FPObject to duplicate. 
-            This is useful when migrating objects between different FMC
-            servers.
+            This is useful when migrating objects between different FMC servers.
         """
         if not (oid or url or data or obj or json or name):
             logger.fatal("Cannot get FPObject with empty parameters")
@@ -489,8 +453,7 @@ class FPObject(FPResource):
         if data is not None:
             type = data.get('type').lower() + 's'  # If data is provided, type should not be required
             if data.get("name") in self.fmc.obj_tables[type].names.keys():
-                logging.warning(
-                    "{}: Object name {} already exists!".format(self.fmc.url, data.get("name")))
+                logging.warning("{}: Object name {} already exists!".format(self.fmc.url, data.get("name")))
                 # Fetch the existing object using known object ID
                 oid = self.fmc.obj_tables[type].names[data.get("name")]
 
@@ -526,8 +489,7 @@ class FPObject(FPResource):
             oid = self.fmc.obj_tables[self.type].names[name]
             logging.debug("Looking for name {} and found id {}".format(name, oid))
 
-        resp = self.fmc._req_json(
-            resource='object', type=self.type, oid=oid, url=url, data=data)
+        resp = self.fmc._req_json(resource='object', type=self.type, oid=oid, url=url, data=data)
 
         if len(resp): 
             # True only if GET/POST operation was successful
@@ -538,51 +500,15 @@ class FPObject(FPResource):
             obj_names[self.name] = self.id
         else:
             if data.get('name') is not None:
-                logging.error(
-                    "Creating new {} object: {}! FAILED!!".
-                        format(self.type, data['name']))
+                logging.error("Creating new {} object: {}! FAILED!!".format(self.type, data['name']))
             else:
-                logging.error(
-                    "FAILED to get {} object: {}!!".
-                        format(self.type, obj.name))
+                logging.error("FAILED to get {} object: {}!!".format(self.type, obj.name))
             return  # new object is not added to the dictionary
     # End of FPObject.__init__
-
-    @property
-    def url(self):
-        return self.json['links']['self']
-    
-    @property
-    def name(self):
-        return self.json['name']
-        
-    @property
-    def id(self):
-        return self.json['id']
-        
-    def __str__(self):
-        return str(self.json)
 
     def __repr__(self):
         return "{}(type={}, name={}, id={})".format(
             self.__class__.__name__, self.type, self.name, self.id)
-
-    def _req_json(self, oid=None, url=None, data=None):
-        """
-        Simple wrapper for _req with more options to make it resource
-        agnostic and reusable in different classes
-        """
-        if oid:                         # Fetch the resource using instance ID
-            url = self.fmc.url + self.fmc.API_PATH['object'] + self.type + '/' + oid
-
-        resp = ''
-        if url:                         # Fetch the resource using the URL
-            resp = self._req(url)
-        elif data:                      # Create resource using the data
-            url = self.url + self.API_PATH['object'] + type
-            logging.warning("Creating new {} object: {}!".format(type, data['name']))
-            resp = self._req(url, method='POST', data=data)
-        return resp
 
     def update(self, data):
         """
@@ -592,7 +518,7 @@ class FPObject(FPResource):
         :return: JSON data of the object
         """
         logging.warning(
-            "Updating {} object {}: {}!".format(self.type, self.id, self.name))
+            "Updating {} object {}!".format(self.type, self.name))
         resp = self.fmc._req(
             self.json['links']['self'], 
             method='PUT', data=data)
@@ -636,9 +562,7 @@ class FPObject(FPResource):
             obj_names.pop(old_name)
             obj_names[self.name] = self.id
         else:
-            logging.error(
-                "Renaming {} object {}: {} FAILED!!".
-                format(self.type, self.name, new_name))
+            logging.error("Renaming {} object {}: {} FAILED!!".format(self.type, self.name, new_name))
         return
 
     def get_child_object(self, child_name):
@@ -707,14 +631,10 @@ class FPObject(FPResource):
             else:
                 child_type = obj_child['type']
         if child_type:
-            logging.warning(
-                "Removing {} child object {} from parent {}!".
-                format(child_type, child_name, self.name))
+            logging.warning("Removing {} child object {} from parent {}!".format(child_type, child_name, self.name))
             self.update(put_data)
         else:
-            logging.error(
-                "Child {} not found inside parent {}!".
-                format(child_name, self.name))
+            logging.error("Child {} not found inside parent {}!".format(child_name, self.name))
 
     @property
     def parent_type(self):
@@ -792,7 +712,6 @@ class FPObject(FPResource):
             format(self.type, self.json['name'], pname))
         parent_obj.update(put_data)
         return
-
 # End of FPObject class
 
 
@@ -839,8 +758,7 @@ class FPAccessPolicy(object):
             # another FMC
             self.type = obj.type
             if obj.name in self.fmc.obj_tables[self.type].names.keys():
-                logging.warning(
-                    "{}: Object name {} already exists!".format(self.fmc.url, obj.name))
+                logging.warning("{}: Object name {} already exists!".format(self.fmc.url, obj.name))
                 # Fetch the existing object using known object ID
                 oid = self.fmc.obj_tables[self.type].names[obj.name]
             else:
@@ -859,8 +777,7 @@ class FPAccessPolicy(object):
         else:
             logging.fatal("Object type not defined!!")
 
-        resp = self.fmc._req_json(
-            resource='policy', oid=oid, url=url, data=data)
+        resp = self.fmc._req_json(resource='policy', oid=oid, url=url, data=data)
 
         if len(resp):
             # True only if GET/POST operation was successful
@@ -871,13 +788,9 @@ class FPAccessPolicy(object):
             obj_names[self.name] = self.id
         else:
             if data.get('name') is not None:
-                logging.error(
-                    "Creating new {} object: {}! FAILED!!".
-                        format(self.type, data['name']))
+                logging.error("Creating new {} object: {}! FAILED!!".format(self.type, data['name']))
             else:
-                logging.error(
-                    "FAILED to get {} object: {}!!".
-                        format(self.type, obj.name))
+                logging.error("FAILED to get {} object: {}!!".format(self.type, obj.name))
             return  # new object is not added to the dictionary
 
     # End of FPObject.__init__
@@ -902,7 +815,6 @@ class FPAccessPolicy(object):
             self.__class__.__name__, self.type, self.name, self.id)
 
 
-# Generic Object related class and methods
 class FPDeviceTable(FPResourceTable):
     def __init__(self, fmc, type):
         super(self.__class__, self).__init__(fmc, 'devices', type)

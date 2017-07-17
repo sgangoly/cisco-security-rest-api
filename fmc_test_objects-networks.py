@@ -33,7 +33,10 @@ def main():
         for obj_type in lab_fmc.NETWORK_OBJECT_TYPES:
             # ['hosts', 'networks', 'ranges', 'networkgroups']
             lab_fmc.obj_tables[obj_type].build()
-        
+
+        for obj in lab_fmc.obj_tables['networkgroups']:  # Current list of objects in FMC
+            print(obj.name)
+
         test_host = {
             "description": "Testing Python API | Chetan",
             "name": "TEST.HOST.OBJECT",
@@ -66,9 +69,9 @@ def main():
             ("literals", [OrderedDict([
                     ("type", "Network"),
                     ("value", "8.8.8.0/24")
-                ])]
-            )
-        ])
+                    ])]
+                )
+            ])
 
         test_nw_group = {
             "description": "Testing Python API | Chetan",
@@ -111,6 +114,7 @@ def main():
         obj_host.delete()
         obj_ch_group.delete()
     # End of with block
+
     print("Done running...")
     return
 
