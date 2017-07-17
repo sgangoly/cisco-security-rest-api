@@ -385,7 +385,7 @@ class FPResource(object):
                         # mapping is already populated
                         child_names = self.fmc.obj_tables[child_type].names
                         child_obj['id'] = child_names[child_obj['name']]
-        elif type and (type in self.fmc.OBJECT_TYPES):
+        elif type is not None and (type in self.fmc.OBJECT_TYPES):
             # If 'obj' is provided, then ignore 'type' parameter
             self.type = type
         else:
@@ -486,6 +486,14 @@ class FPObject(FPResource):
             return
         self.json = None
 
+        if data is not None:
+            type = data.get('type').lower() + 's'  # If data is provided, type should not be required
+            if data.get("name") in self.fmc.obj_tables[type].names.keys():
+                logging.warning(
+                    "{}: Object name {} already exists!".format(self.fmc.url, data.get("name")))
+                # Fetch the existing object using known object ID
+                oid = self.fmc.obj_tables[type].names[data.get("name")]
+
         if obj:
             # This option helps duplicating objects from one FMC to
             # another FMC
@@ -508,7 +516,7 @@ class FPObject(FPResource):
                         # mapping is already populated
                         child_names = self.fmc.obj_tables[child_type].names
                         child_obj['id'] = child_names[child_obj['name']]
-        elif type and (type in self.fmc.OBJECT_TYPES):
+        elif type is not None and (type in self.fmc.OBJECT_TYPES):
             # If 'obj' is provided, then ignore 'type' parameter
             self.type = type
         else:

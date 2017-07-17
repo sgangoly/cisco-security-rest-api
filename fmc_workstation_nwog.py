@@ -1,4 +1,4 @@
-import fmc # Firepower Management Center (FMC) 6.1 API
+import fmc  # Firepower Management Center (FMC) 6.1 API
 import sys
 import logging
 import csv
@@ -11,7 +11,7 @@ def main():
     logging.basicConfig(
         # filename='/path/to/python-fmc/output.txt',
         stream=sys.stdout,
-        level=logging.INFO,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+        level=logging.DEBUG,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
         # format="[%(levelname)8s]:  %(message)s",
         format='[%(asctime)s-%(levelname)s]: %(message)s',
         datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -42,6 +42,7 @@ def main():
             d = {"type": "Network", "value": row['subnet_cidr']}
             nwog_dicts[subnet_nwog]["literals"].append(d)
 
+    need_action = 'CREATE'  # or 'DELETE'
     with fmc.FMC(url=server_url, username=username, password=password) as lab_fmc:
         # Build the object names dictionary for the FMC
         for obj_type in lab_fmc.NETWORK_OBJECT_TYPES:
@@ -49,19 +50,19 @@ def main():
             lab_fmc.obj_tables[obj_type].build()
 
         for key, item in nwog_dicts.items():
-            # Create Objects
-            logging.info("Creating object-group {}".format(key))
-            obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', data=item)
-            # # Delete Objects
-            # if key in lab_fmc.obj_tables['networkgroups'].names.keys():
-            #     obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', name=key)
-            #     logging.info("Deleting object-group {}".format(key))
-            #     obj_nw_group.delete()
-            # else:
-            #     print "Object Group {} NOT Found".format(key)
+            if need_action is 'CREATE':
+                logging.info("Creating object-group {}".format(key))
+                obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', data=item)
+            elif need_action is 'DELETE':
+                if key in lab_fmc.obj_tables['networkgroups'].names.keys():
+                    obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', name=key)
+                    logging.info("Deleting object-group {}".format(key))
+                    obj_nw_group.delete()
+                else:
+                    print "Object Group {} NOT Found".format(key)
 
     # End of with block
-    print "Done running..."
+    print("Done running...")
     return
 
 # Standard boilerplate to call main() function.

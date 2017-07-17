@@ -76,6 +76,7 @@ def main():
                     # obj_id = names_dict[obj_name]
                     fp_obj = fmc.FPObject(lab_fmc, type=obj_type, oid=obj_id)
                     fp_obj.delete()
+
     # End of with block
     print("Done running...")
     return

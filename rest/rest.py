@@ -56,14 +56,15 @@ class RestJSONHandler(RestDataHandler):
         self.hdrs_req['Accept'] = 'application/json'
 
     def _handle_http_err(self, err):
+        # err.code worked for urllib2
         logging.error(
-            "HTTP error code {} received from server.".format(err.code))
+            "HTTP error {} received from server.".format(err))
         try:
-            json_err = json.loads(err.read())
+            # json_err = json.loads(err.read())err.response.text  # This worked for urllib2
+            json_err = json.loads(err.response.text)
             if json_err:
                 logging.error(
-                    json.dumps(json_err, sort_keys=True,
-                               indent=4, separators=(',', ': ')))
+                    json.dumps(json_err, sort_keys=True, indent=4, separators=(',', ': ')))
         except ValueError:
             pass
 
@@ -260,6 +261,7 @@ class Rest3Client(AppClient, RestDataHandler):
             r = self.session.send(prep_req, verify=False)
             if r.status_code not in [200, 201, 202, 204]:
                 # 200-OK, 201-Created, 202-Accepted, 204-No Content
+                r.raise_for_status()
                 logger.error(
                     "Error code {} in the HTTP request".format(r.status_code))
                 if r.text is not None:
