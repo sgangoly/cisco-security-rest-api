@@ -7,6 +7,7 @@ from rest import *
 import pyxb
 import csmxsd
 from lxml import etree
+from netaddr import *
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,16 @@ class RestPyxbHandler(RestDataHandler):
         logging.error(
             "HTTP error code {} received from server.".format(err.code))
 
+    def write_file(self, pyxb_obj, filename):
+        f = open(filename, 'wb')
+        f.write(self.toprettyxml(pyxb_obj))
+        f.close()
+
+    def append_file(self, pyxb_obj, filename):
+        f = open(filename, 'a')
+        f.write(self.toprettyxml(pyxb_obj))
+        f.close()
+
 
 class CsmClient(AppClient):
     def __init__(self, *args, **kwargs):
@@ -174,8 +185,11 @@ class CSM(CSMRestClient):
         """
         super(CSM, self).__init__(url=url, username=username, password=password)
         self.obj_tables = {}
-        self.obj_tables['network'] = OrderedDict()  # This makes sure child objects appear before parent
-        self.obj_tables['service'] = OrderedDict()  # This makes sure child objects appear before parent
+        self.obj_tables['network'] = {}
+        self.obj_tables['service'] = {}
+        self.ordered_tables = {}
+        self.ordered_tables['network'] = OrderedDict()  # This makes sure child objects appear before parent
+        self.ordered_tables['service'] = OrderedDict()  # This makes sure child objects appear before parent
 
     def _valid_gid(self, gid):
         GID_PATTERN = r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
@@ -449,11 +463,32 @@ class CSM(CSMRestClient):
         for net_obj in policy_obj.policyObject.networkPolicyObject:
             # print(net_obj.gid, net_obj.type, net_obj.name, net_obj.comment)
             if net_objs.get(net_obj.gid) is None:
+                # self.getObjectsByGid('network', [net_obj_gid])
                 net_objs[net_obj.gid] = net_obj
         for srv_obj in policy_obj.policyObject.servicePolicyObject:
             # print(srv_obj.gid, srv_obj.type, srv_obj.name, srv_obj.comment)
             if srv_objs.get(srv_obj.gid) is None:
                 srv_objs[srv_obj.gid] = srv_obj
+
+    def order_tables(self, obj_type):
+        """
+        Build ordered tables using child first order. XML response from CSM does NOT use child first order for network
+        groups.
+
+        :param obj_type: Object type, 'network' or 'service'
+        """
+        for gid, obj in self.obj_tables[obj_type].items():
+            self.add_child_first(obj, obj_type)
+
+    def add_child_first(self, obj, obj_type):
+        net_objs = self.obj_tables[obj_type]
+        if obj.refGIDs is not None:
+            for child_gid in obj.refGIDs.gid:
+                if self.ordered_tables[obj_type].get(child_gid) is None:
+                    self.add_child_first(net_objs[child_gid])  # recursion for multi-level nesting
+
+        if self.ordered_tables[obj_type].get(obj.gid) is None:
+            self.ordered_tables[obj_type][obj.gid] = obj
 
     def print_rules(self, policy_obj):
         net_objs = self.obj_tables['network']
@@ -471,45 +506,47 @@ class CSM(CSMRestClient):
                             srv_objs[srv_gid].name)
                         logging.info(s)
 
-    def write_file(self, pyxb_obj, filename):
-        f = open(filename, 'wb')
-        f.write(self.toprettyxml(pyxb_obj))
-        f.close()
-
-    def append_file(self, pyxb_obj, filename):
-        f = open(filename, 'a')
-        f.write(self.toprettyxml(pyxb_obj))
-        f.close()
-
     def fmc_nw_objects(self, fmc):
+        """
+        Convert CSM network policy objects into dictionary objects for FMC network object creation.
+
+        :param fmc: Firepower Management Center 6.1 API Object
+        :return:
+        """
         # Assume that object table is already updated and all are network object-groups
-        for gid, net_obj in self.obj_tables['network'].items():  # child first order
+        net_objs = self.ordered_tables['network']
+        for gid, net_obj in net_objs.items():  # child first order
             nwog_dict = {"name": net_obj.name,
-                         "description": net_obj.comment,
+                         "description": net_obj.comment.strip('\n'),
                          "overridable": True,
                          "type": "NetworkGroup"}  # Create everything as Network Group
 
-            for subnet_cidr in net_obj.ipData:  # Works for network policy objects having ipData
-                if nwog_dict.get("literals") is None:
-                    nwog_dict["literals"] = []
+            if net_obj.ipData is not None:
+                for subnet_cidr in net_obj.ipData:  # Works for network policy objects having ipData
+                    if nwog_dict.get("literals") is None:
+                        nwog_dict["literals"] = []
 
-                if subnet_cidr is "Subnet":  # Need to build logic here
-                    d = {"type": "Network", "value": subnet_cidr}
-                    nwog_dict["literals"].append(d)
-                elif subnet_cidr is "Host":  # Need to build logic here
-                    d = {"type": "Host", "value": subnet_cidr}
-                    nwog_dict["literals"].append(d)
+                    ip_nw = IPNetwork(subnet_cidr)
+                    if ip_nw.netmask == IPAddress('255.255.255.255'):  # subnet_cidr is Host
+                        d = {"type": "Host",
+                             "value": subnet_cidr.split('/')[0]}
+                        nwog_dict["literals"].append(d)
+                    else:  # subnet_cidr is a Network
+                        d = {"type": "Network",
+                             "value": str(ip_nw)}
+                        nwog_dict["literals"].append(d)
 
-            for child_gid in net_obj.refGIDs.gid:  # Works for network policy objects having ipData
-                if nwog_dict.get("objects") is None:
-                    nwog_dict["objects"] = []
+            if net_obj.refGIDs is not None:
+                for child_gid in net_obj.refGIDs.gid:  # Works for network policy objects having ipData
+                    if nwog_dict.get("objects") is None:
+                        nwog_dict["objects"] = []
 
-                child_name = self.obj_tables['network'][child_gid].name
-                child_fmc_id = fmc.obj_tables['networkgroups'].names[child_name]
-                d = {"id": child_fmc_id,
-                     "name": child_name,
-                     "type": "NetworkGroup",
-                     "overridable": True}
-                nwog_dict["objects"].append(d)
+                    child_name = net_objs[child_gid].name                                 # CSM GID --> OG Name
+                    child_fmc_id = fmc.obj_tables['networkgroups'].names.get(child_name)  # OG Name --> FMC OID
+                    d = {"id": child_fmc_id,
+                         "name": child_name,
+                         "type": "NetworkGroup",
+                         "overridable": True}
+                    nwog_dict["objects"].append(d)
 
             yield nwog_dict  # this must be child first order

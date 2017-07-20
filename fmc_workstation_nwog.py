@@ -49,17 +49,17 @@ def main():
             # ['hosts', 'networks', 'ranges', 'networkgroups']
             lab_fmc.obj_tables[obj_type].build()
 
-        for key, item in nwog_dicts.items():
+        for nwog_name, nwog_data in nwog_dicts.items():
             if need_action is 'CREATE':
-                logging.info("Creating object-group {}".format(key))
-                obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', data=item)
-            elif need_action is 'DELETE':
-                if key in lab_fmc.obj_tables['networkgroups'].names.keys():
-                    obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', name=key)
-                    logging.info("Deleting object-group {}".format(key))
+                logging.info("Creating object-group {}".format(nwog_name))
+                obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', data=nwog_data)
+            elif need_action is 'DELETE':  # This helps in testing the script multiple times
+                if nwog_name in lab_fmc.obj_tables['networkgroups'].names.keys():
+                    obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', name=nwog_name)
+                    logging.info("Deleting object-group {}".format(nwog_name))
                     obj_nw_group.delete()
                 else:
-                    print "Object Group {} NOT Found".format(key)
+                    print "Object Group {} NOT Found".format(nwog_name)
 
     # End of with block
     print("Done running...")

@@ -331,7 +331,7 @@ class FPObjectTable(FPResourceTable):
                 return
             for obj_json in resp['items']:
                 # Make sure children names are listed before parent
-                self.build_child_first(obj_json)
+                self.add_child_first(obj_json)
             # Move to next page
             if 'next' in resp['paging'].keys():
                 url = resp['paging']['next'][0]
@@ -343,7 +343,7 @@ class FPObjectTable(FPResourceTable):
                 url = None
         logger.debug(self.names)
 
-    def build_child_first(self, obj_json):
+    def add_child_first(self, obj_json):
         if obj_json.get("objects") is not None:
             for ch_item in obj_json["objects"]:
                 ch_type = ch_item['type'].lower() + 's'
@@ -351,7 +351,7 @@ class FPObjectTable(FPResourceTable):
                     logger.debug("Found nested child {}".format(ch_item['name']))
                     ch_json = self.fmc._req_json(self.resource, type=self.type, oid=ch_item["id"])
                     # recursion for multi-level nesting - child-first order
-                    self.build_child_first(ch_json)
+                    self.add_child_first(ch_json)
         if self.names.get(obj_json['name']) is None:
             self.names[obj_json['name']] = obj_json['id']
 # End of FPObjectTable class

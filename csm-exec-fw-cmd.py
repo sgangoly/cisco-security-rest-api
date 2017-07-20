@@ -24,9 +24,10 @@ def main():
     if len(sys.argv) > 3:
         server_url = sys.argv[3]
 
+    fw_cmd = 'show clock'  # Put firewall show command here
     with csm.CSM(server_url, username, password) as lab_csm:
         lab_csm.getServiceInfo()
-        lab_csm.exec_fw_cmd('show clock')
+        lab_csm.exec_fw_cmd(fw_cmd)
 
     return    
 
