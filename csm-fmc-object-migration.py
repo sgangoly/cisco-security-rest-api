@@ -6,7 +6,7 @@ import fmc  # Firepower Management Center (FMC) 6.1 API
 logger = logging.getLogger(__name__)
 
 
-def migrate_network_objects(csm_obj, fmc_obj, need_action='CREATE'):
+def migrate_network_objects(csm_obj, fmc_obj, action='CREATE'):
     policy_type = 'DeviceAccessRuleUnifiedFirewallPolicy'
     policy_list = csm_obj.getSharedPolicyListByType(policy_type)
     for po in policy_list.policy:
@@ -19,12 +19,12 @@ def migrate_network_objects(csm_obj, fmc_obj, need_action='CREATE'):
 
             csm_obj.order_tables(obj_type='network')  # Child first order
 
-            if need_action is 'CREATE':
+            if action is 'CREATE':
                 for nwog_data in csm_obj.fmc_nw_objects(fmc_obj):
                     print(nwog_data)
                     logging.info("Creating Network Group Object {}".format(nwog_data['name']))
                     obj_nw_group = fmc.FPObject(fmc_obj, type='networkgroups', data=nwog_data)
-            elif need_action is 'DELETE':  # This helps in testing the script multiple times
+            elif action is 'DELETE':  # This helps in testing the script multiple times
                 net_objs = csm_obj.ordered_tables['network']
                 fmc_names_dict = fmc_obj.obj_tables['networkgroups'].names
                 for gid, net_obj in net_objs.items()[::-1]:  # Delete with parents first order
@@ -68,13 +68,13 @@ def main():
         fmc_url = sys.argv[6]
 
     with csm.CSM(csm_url, csm_user, csm_pswd) as lab_csm:
-        lab_csm.getServiceInfo()
+        lab_csm.getServiceInfo()  # Validate communication with CSM
         with fmc.FMC(fmc_url, fmc_user, fmc_pswd) as lab_fmc:
             for obj_type in lab_fmc.NETWORK_OBJECT_TYPES:
                 # ['hosts', 'networks', 'ranges', 'networkgroups']
                 lab_fmc.obj_tables[obj_type].build()
 
-            migrate_network_objects(lab_csm, lab_fmc, 'DELETE')
+            migrate_network_objects(lab_csm, lab_fmc, action='CREATE')
 
     return    
 

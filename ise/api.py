@@ -5,8 +5,6 @@ from collections import OrderedDict
 from rest import *
 
 logger = logging.getLogger(__name__)
-# Ignore SSL certificate check for all API URLs
-ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class ISEClient(AppClient):
@@ -21,6 +19,7 @@ class ISEClient(AppClient):
         base64str = base64.b64encode('{}:{}'.format(self.username, self.password))
         self.hdrs_auth["Authorization"] = "Basic {}".format(base64str)
         self.login_data = None
+        self.login_method = 'POST'
         super(ISEClient, self).login(*args, **kwargs)
 
     def logout(self):
@@ -39,7 +38,7 @@ class ISEError(Exception):
     pass
 
 
-class ISERestClient(RestClient, ISEClient, RestXMLHandler):
+class ISERestClient(Rest3Client, ISEClient, RestXMLHandler):
     """
     Method Resolution Order:
     ISERestClient

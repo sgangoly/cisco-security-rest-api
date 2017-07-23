@@ -4,7 +4,7 @@ import csm
 
 logger = logging.getLogger(__name__)
 
-def get_all_access_rules(csm_obj, fmc_obj):
+def get_all_access_rules(csm_obj):
     policy_type = 'DeviceAccessRuleUnifiedFirewallPolicy'
     policy_list = csm_obj.getSharedPolicyListByType(policy_type)
     for po in policy_list.policy:

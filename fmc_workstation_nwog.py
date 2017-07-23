@@ -27,6 +27,14 @@ def main():
     if len(sys.argv) > 3:
         server_url = sys.argv[3]
 
+    # Read CSV file and create JSON data to be POST'd to FMC
+    # "subnet_cidr", "subnet_nwog"
+    # "192.168.10.0/23", "TEST.NETWORK-GROUP_1"
+    # "192.168.0.0/23", "TEST.NETWORK-GROUP_1"
+    # "10.10.10.0/28", "TEST.NETWORK-GROUP_2"
+    # "10.48.0.0/20", "TEST.NETWORK-GROUP_3"
+    # "192.168.64.0/20", "TEST.NETWORK-GROUP_1"
+
     nwog_dicts = {}
     with open('workstation_subnets.csv') as csvfile:
         reader = csv.DictReader(csvfile)
@@ -42,18 +50,19 @@ def main():
             d = {"type": "Network", "value": row['subnet_cidr']}
             nwog_dicts[subnet_nwog]["literals"].append(d)
 
-    need_action = 'CREATE'  # or 'DELETE'
+    action = 'DELETE'  # or 'DELETE'
     with fmc.FMC(url=server_url, username=username, password=password) as lab_fmc:
         # Build the object names dictionary for the FMC
+        # This is required for data validation before making changes in FMC.
         for obj_type in lab_fmc.NETWORK_OBJECT_TYPES:
             # ['hosts', 'networks', 'ranges', 'networkgroups']
             lab_fmc.obj_tables[obj_type].build()
 
         for nwog_name, nwog_data in nwog_dicts.items():
-            if need_action is 'CREATE':
+            if action is 'CREATE':
                 logging.info("Creating object-group {}".format(nwog_name))
                 obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', data=nwog_data)
-            elif need_action is 'DELETE':  # This helps in testing the script multiple times
+            elif action is 'DELETE':  # This helps in testing the script multiple times
                 if nwog_name in lab_fmc.obj_tables['networkgroups'].names.keys():
                     obj_nw_group = fmc.FPObject(lab_fmc, type='networkgroups', name=nwog_name)
                     logging.info("Deleting object-group {}".format(nwog_name))

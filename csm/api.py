@@ -11,11 +11,6 @@ from netaddr import *
 
 logger = logging.getLogger(__name__)
 
-# Ignore SSL certificate check for all API URLs
-# Uncomment the following two lines, if you are using Python 2.7.9 or 
-# above to connect to an ACS with a self-signed certificate.
-ssl._create_default_https_context = ssl._create_unverified_context
-
 
 class RestPyxbHandler(RestDataHandler):
     def __init__(self, *args, **kwargs):
@@ -93,7 +88,7 @@ class RestPyxbHandler(RestDataHandler):
 
     def _handle_http_err(self, err):
         logging.error(
-            "HTTP error code {} received from server.".format(err.code))
+            "HTTP error {} received from server.".format(err))
 
     def write_file(self, pyxb_obj, filename):
         f = open(filename, 'wb')
@@ -128,6 +123,7 @@ class CsmClient(AppClient):
                 ('heartbeatRequested', 'false')
                 ]))
         self.login_data = login_dict
+        self.login_method = 'POST'
         kwargs['req_type'] = '{csm}loginRequest'
         super(CsmClient, self).login(*args, **kwargs)
 
@@ -477,6 +473,8 @@ class CSM(CSMRestClient):
 
         :param obj_type: Object type, 'network' or 'service'
         """
+        if obj_type not in ['network', 'service']:
+            logging.error('Object type {} not supported'.format(obj_type))
         for gid, obj in self.obj_tables[obj_type].items():
             self.add_child_first(obj, obj_type)
 

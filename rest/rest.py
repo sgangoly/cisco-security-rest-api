@@ -1,9 +1,10 @@
-import urllib2
 import requests
+import re
 import logging
 import json
 from lxml import etree
 from collections import OrderedDict
+# import urllib2
 
 __author__ = "Chetankumar Phulpagare"
 __copyright__ = "Copyright 2017, Cisco"
@@ -85,7 +86,11 @@ class RestXMLHandler(RestDataHandler):
         self.hdrs_auth["Content-Type"] = "application/xml"
 
     def handle_response(self, resp):
-        XML_resp = etree.fromstring(resp)
+        # etree does not like unicode strings with encoding definition in it
+        # etree_resp = resp.replace(r''' encoding="utf-8"''', '')
+        etree_resp = re.sub(r""" encoding=["|'][u|U][t|T][f|F]-8["|']""", '', resp)
+        logger.debug(etree_resp)
+        XML_resp = etree.fromstring(etree_resp)
         logger.debug("XML Response")
         logger.debug(etree.tostring(XML_resp, pretty_print=True))
         return XML_resp
@@ -115,7 +120,7 @@ class RestXMLHandler(RestDataHandler):
 
     def _handle_http_err(self, err):
         logging.error(
-            "HTTP error code {} received from server.".format(err.code))
+            "HTTP error {} received from server.".format(err))
 
     def _add_elem(self, xml_data, key, value):
         elem = etree.Element(key)
@@ -190,7 +195,7 @@ class Rest3Client(AppClient, RestDataHandler):
         if self.username and self.password:
             self.login()
 
-    def login(self):
+    def login(self, method='POST'):
         """
         The login method authenticates a REST client attempting to
         access the services provided by the REST server. This method
@@ -204,8 +209,13 @@ class Rest3Client(AppClient, RestDataHandler):
         # f = None
         try:
             # f = urllib2.urlopen(req)  # can raise URLError
-            print(url_token)
-            resp = self.session.post(url_token, data=self.login_data, headers=self.hdrs_auth, verify=False)
+            logging.debug(url_token)
+            # resp = self.session.post(url_token, data=self.login_data, headers=self.hdrs_auth, verify=False)
+            req = requests.Request(
+                method=self.login_method, url=url_token,
+                data=self.login_data, headers=self.hdrs_auth)
+            prep_req = self.session.prepare_request(req)
+            resp = self.session.send(prep_req, verify=False)
             # status_code = f.getcode()
             if resp.status_code != self.AUTH_HTTP_STATUS:
                 logger.fatal("Error code {} in the HTTP request".format(resp.status_code))
@@ -289,121 +299,121 @@ class Rest3Client(AppClient, RestDataHandler):
         return obj
 
 
-class RestClient(AppClient, RestDataHandler):
-    def __init__(self, url=None, username=None, password=None):
-        """
-        Initialize REST API object with URL. `username` and `password`
-        parameters are optional. If omitted, `login` method can be used.
-
-        :param url: URL of the REST API server
-        :param username: Login username for REST API server
-        :param password: Login password for REST API server
-        """
-        if url is None:
-            logger.fatal("REST API Server URL needs to be specified")
-            exit(1)
-
-        self.url = url     # Server URL
-        self.token = None  # Authentication token
-        self.username = username
-        self.password = password
-        super(RestClient, self).__init__()
-        if self.username and self.password:
-            self.login()
-
-    def login(self):
-        """
-        The login method authenticates a REST client attempting to
-        access the services provided by the REST server. This method
-        must be called prior to any other method called on other
-        services.
-        """
-        self.login_data = ""
-        super(RestClient, self).login()
-        url_token = self.url + self.AUTH_URL
-        req = urllib2.Request(url_token, self.login_data, headers=self.hdrs_auth)
-        f = None
-        try:
-            f = urllib2.urlopen(req)  # can raise URLError
-            status_code = f.getcode()
-            if status_code != self.AUTH_HTTP_STATUS:
-                logger.fatal("Error code {} in the HTTP request".format(status_code))
-                exit(1)
-            self.token = f.info().getheader(self.AUTH_REQ_HDR_FIELD)
-            logging.info("{}: Login Successful!".format(self.url))
-            logging.debug("REST API Server Auth token: {}".format(self.token))
-        except urllib2.HTTPError, err:
-            self._handle_http_err(err)
-            raise RestClientError("Login to REST API Server Failed!!")
-        finally:
-            if f:
-                f.close()
-
-    def logout(self):
-        """
-        The logout method notifies the FMC server that a previously
-        authenticated FMC client is no longer requiring session access
-        to the server.
-        """
-        self.logout_data = 'LOGOUT'
-        super(RestClient, self).logout()
-        if self.LOGOUT_URL:
-            url = self.url + self.LOGOUT_URL
-            self._req(url, method='POST', data=self.logout_data)
-        logging.info("{}: Logout Successful!".format(self.url))
-
-    def _req(self, url, method='GET', data=None, **kwargs):
-        """
-        RestClient Internal function. Submit request towards RSET API server,
-        checks return status and parses return content.
-
-        :param path: Path to append to URI
-        :param method: REST API method, can be any of
-            'GET','POST','PUT','DELETE'
-        :param data: JSON request content
-        :return: JSON response from FMC server as dict()
-        """
-        if url is None:
-            raise RestClientError("REST URL needs to be specified")
-
-        super(RestClient, self)._req(method=method, data=data, **kwargs)
-        req_data = self.prepare_data(data=data, **kwargs)
-
-        if method in ['GET', 'DELETE'] and data is not None:
-            raise RestClientError("HTTP 'GET' or 'DELETE' can only accept data=None")
-
-        logger.debug('{} data: {}'.format(method, req_data))
-        req = urllib2.Request(url, req_data, headers=self.hdrs_req)  # Create Request
-        if method in ['PUT', 'DELETE']:
-            # urllib2 supports only GET and POST by default
-            req.get_method = lambda: method
-
-        obj_resp = ''  # len(json_resp) = 0 if HTTP request fails
-        f = None
-        try:
-            logger.debug("Requesting {} for {}".format(method, url))
-            f = urllib2.urlopen(req)
-            status_code = f.getcode()
-            if status_code not in [200, 201, 202, 204]:
-                # 200-OK, 201-Created, 202-Accepted, 204-No Content
-                logger.error(
-                    "Error code {} in the HTTP request".format(status_code))
-                return obj_resp
-            resp = f.read()  # logout method returns nothing
-            if len(resp):
-                obj_resp = self.handle_response(resp)
-        except urllib2.HTTPError, err:
-            self._handle_http_err(err)
-        finally:
-            if f:
-                f.close()
-            return obj_resp
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, errtype, errvalue, errtb):
-        if errtype == RestClientError:
-            logging.fatal(errvalue)
-        else:
-            self.logout()
+# class RestClient(AppClient, RestDataHandler):
+#     def __init__(self, url=None, username=None, password=None):
+#         """
+#         Initialize REST API object with URL. `username` and `password`
+#         parameters are optional. If omitted, `login` method can be used.
+#
+#         :param url: URL of the REST API server
+#         :param username: Login username for REST API server
+#         :param password: Login password for REST API server
+#         """
+#         if url is None:
+#             logger.fatal("REST API Server URL needs to be specified")
+#             exit(1)
+#
+#         self.url = url     # Server URL
+#         self.token = None  # Authentication token
+#         self.username = username
+#         self.password = password
+#         super(RestClient, self).__init__()
+#         if self.username and self.password:
+#             self.login()
+#
+#     def login(self):
+#         """
+#         The login method authenticates a REST client attempting to
+#         access the services provided by the REST server. This method
+#         must be called prior to any other method called on other
+#         services.
+#         """
+#         self.login_data = ""
+#         super(RestClient, self).login()
+#         url_token = self.url + self.AUTH_URL
+#         req = urllib2.Request(url_token, self.login_data, headers=self.hdrs_auth)
+#         f = None
+#         try:
+#             f = urllib2.urlopen(req)  # can raise URLError
+#             status_code = f.getcode()
+#             if status_code != self.AUTH_HTTP_STATUS:
+#                 logger.fatal("Error code {} in the HTTP request".format(status_code))
+#                 exit(1)
+#             self.token = f.info().getheader(self.AUTH_REQ_HDR_FIELD)
+#             logging.info("{}: Login Successful!".format(self.url))
+#             logging.debug("REST API Server Auth token: {}".format(self.token))
+#         except urllib2.HTTPError, err:
+#             self._handle_http_err(err)
+#             raise RestClientError("Login to REST API Server Failed!!")
+#         finally:
+#             if f:
+#                 f.close()
+#
+#     def logout(self):
+#         """
+#         The logout method notifies the FMC server that a previously
+#         authenticated FMC client is no longer requiring session access
+#         to the server.
+#         """
+#         self.logout_data = 'LOGOUT'
+#         super(RestClient, self).logout()
+#         if self.LOGOUT_URL:
+#             url = self.url + self.LOGOUT_URL
+#             self._req(url, method='POST', data=self.logout_data)
+#         logging.info("{}: Logout Successful!".format(self.url))
+#
+#     def _req(self, url, method='GET', data=None, **kwargs):
+#         """
+#         RestClient Internal function. Submit request towards RSET API server,
+#         checks return status and parses return content.
+#
+#         :param path: Path to append to URI
+#         :param method: REST API method, can be any of
+#             'GET','POST','PUT','DELETE'
+#         :param data: JSON request content
+#         :return: JSON response from FMC server as dict()
+#         """
+#         if url is None:
+#             raise RestClientError("REST URL needs to be specified")
+#
+#         super(RestClient, self)._req(method=method, data=data, **kwargs)
+#         req_data = self.prepare_data(data=data, **kwargs)
+#
+#         if method in ['GET', 'DELETE'] and data is not None:
+#             raise RestClientError("HTTP 'GET' or 'DELETE' can only accept data=None")
+#
+#         logger.debug('{} data: {}'.format(method, req_data))
+#         req = urllib2.Request(url, req_data, headers=self.hdrs_req)  # Create Request
+#         if method in ['PUT', 'DELETE']:
+#             # urllib2 supports only GET and POST by default
+#             req.get_method = lambda: method
+#
+#         obj_resp = ''  # len(json_resp) = 0 if HTTP request fails
+#         f = None
+#         try:
+#             logger.debug("Requesting {} for {}".format(method, url))
+#             f = urllib2.urlopen(req)
+#             status_code = f.getcode()
+#             if status_code not in [200, 201, 202, 204]:
+#                 # 200-OK, 201-Created, 202-Accepted, 204-No Content
+#                 logger.error(
+#                     "Error code {} in the HTTP request".format(status_code))
+#                 return obj_resp
+#             resp = f.read()  # logout method returns nothing
+#             if len(resp):
+#                 obj_resp = self.handle_response(resp)
+#         except urllib2.HTTPError, err:
+#             self._handle_http_err(err)
+#         finally:
+#             if f:
+#                 f.close()
+#             return obj_resp
+#
+#     def __enter__(self):
+#         return self
+#
+#     def __exit__(self, errtype, errvalue, errtb):
+#         if errtype == RestClientError:
+#             logging.fatal(errvalue)
+#         else:
+#             self.logout()

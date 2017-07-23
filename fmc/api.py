@@ -7,8 +7,6 @@ from rest import *
 from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
-# Ignore SSL certificate check for all API URLs
-ssl._create_default_https_context = ssl._create_unverified_context
 
 
 class FMCError(Exception):
@@ -30,6 +28,7 @@ class FMCClient(AppClient):
     def login(self, *args, **kwargs):
         base64str = base64.b64encode('{}:{}'.format(self.username, self.password))
         self.hdrs_auth["Authorization"] = "Basic {}".format(base64str)
+        self.login_method = 'POST'
         super(FMCClient, self).login(*args, **kwargs)
 
     def logout(self, *args, **kwargs):
