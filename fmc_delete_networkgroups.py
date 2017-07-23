@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     """
-    Use this script to delete all network and service objects that are not defaults.
+    Delete all non-default network objects from FMC. This is useful for API testing.
     """
     logging.basicConfig(
         # filename='/path/to/python-fmc/output.txt',

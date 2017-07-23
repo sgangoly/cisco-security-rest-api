@@ -7,6 +7,13 @@ logger = logging.getLogger(__name__)
 
 
 def migrate_network_objects(csm_obj, fmc_obj, action='CREATE'):
+    """
+    Read network policy objects used in firewall rules from CSM and create them in FMC.
+
+    :param csm_obj: CSM class object
+    :param fmc_obj: FMC class
+    :param action: Create objects or delete objects
+    """
     policy_type = 'DeviceAccessRuleUnifiedFirewallPolicy'
     policy_list = csm_obj.getSharedPolicyListByType(policy_type)
     for po in policy_list.policy:

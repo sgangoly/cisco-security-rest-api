@@ -5,6 +5,11 @@ import csm
 logger = logging.getLogger(__name__)
 
 def get_all_access_rules(csm_obj):
+    """
+    Read shared firewall access rules policies from CSM.
+
+    :param csm_obj: CSM class object
+    """
     policy_type = 'DeviceAccessRuleUnifiedFirewallPolicy'
     policy_list = csm_obj.getSharedPolicyListByType(policy_type)
     for po in policy_list.policy:

@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     """
-    Use this script for testing object API.
+    Test FMC Object Manager API.
     """
     logging.basicConfig(
         # filename='/path/to/python-fmc/output.txt',

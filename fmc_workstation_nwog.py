@@ -7,7 +7,9 @@ import csv
 logger = logging.getLogger(__name__)
 
 def main():
-
+    """
+    Create network objects in FMC as per information in CSV file.
+    """
     logging.basicConfig(
         # filename='/path/to/python-fmc/output.txt',
         stream=sys.stdout,

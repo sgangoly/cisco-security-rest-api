@@ -5,7 +5,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 def main():
-
+    """
+    Migrate policy objects from one FMC to another. This is useful when FMC needs to be re-imaged.
+    """
     logging.basicConfig(
         # filename='/path/to/python-fmc/output.txt',
         stream=sys.stderr, 

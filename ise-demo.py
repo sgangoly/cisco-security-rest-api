@@ -1,10 +1,13 @@
-import ise
+import ise  # Cisco Identity Services Engine (ISE) 2.1
 import sys
 import logging
 
 logger = logging.getLogger(__name__)
 
 def main():
+    """
+    Demo script for ISE REST API.
+    """
     logging.basicConfig(
         stream=sys.stdout,  # filename='/full/path/to/file',
         level=logging.DEBUG, # DEBUG, INFO, WARNING, ERROR, CRITICAL

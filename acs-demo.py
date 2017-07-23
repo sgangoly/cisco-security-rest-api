@@ -5,6 +5,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 def main():
+    """
+    Demo script for ACS REST API.
+    """
     logging.basicConfig(
         stream=sys.stdout,  # filename='/full/path/to/file',
         level=logging.DEBUG, # DEBUG, INFO, WARNING, ERROR, CRITICAL

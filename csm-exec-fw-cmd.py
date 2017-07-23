@@ -5,6 +5,9 @@ import csm
 logger = logging.getLogger(__name__)
 
 def main():
+    """
+    Send read-only commands to all firewalls managed by CSM.
+    """
     logging.basicConfig(
         stream=sys.stdout,
         # filename='csm_output.log',
