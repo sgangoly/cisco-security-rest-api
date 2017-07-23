@@ -1,5 +1,4 @@
 # Cisco Security REST API
-==========================
 
 This is a collection of modules that interact with REST API available in Cisco Security applications:
 * Cisco Identity Services Engine (ISE) 2.1
