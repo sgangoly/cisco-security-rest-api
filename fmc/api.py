@@ -1,9 +1,8 @@
 import base64
-import ssl
 from datetime import datetime
 from time import sleep
 import logging
-from rest import *
+from rest import AppClient, RestJSONHandler, RestClient
 from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
@@ -51,12 +50,12 @@ class FMCClient(AppClient):
             self.req_time = datetime.now()
         method = kwargs['method']
         if method not in ['GET', 'POST', 'PUT', 'DELETE']:
-            raise RestClientError("HTTP method {} is not supported".format(method))
+            raise FMCError("HTTP method {} is not supported".format(method))
 
         super(FMCClient, self)._req(*args, **kwargs)
 
 
-class FMCRestClient(Rest3Client, FMCClient, RestJSONHandler):
+class FMCRestClient(RestClient, FMCClient, RestJSONHandler):
     """
     Method Resolution Order:
     FMCRestClient
@@ -372,7 +371,7 @@ class FPResource(object):
         :param data: (optional) Data that will be accepted by Cisco FMC
             to create object when POST method is used.
         """
-        if not (oid or name or url or data or json):
+        if not (oid or url or data or json):
             logger.fatal("Cannot get FPResource with empty parameters")
             return
         self.fmc = fmc
@@ -389,7 +388,7 @@ class FPResource(object):
             if data.get('name') is not None:
                 logging.error("Creating new {} object: {}! FAILED!!".format(self.type, data['name']))
             else:
-                logging.error("FAILED to get {} object: {}!!".format(self.type, obj.name))
+                logging.error("FAILED to get {} object!!".format(self.type))
             return  # new object is not added to the dictionary
     # End of FPObject.__init__
 

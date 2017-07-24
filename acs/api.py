@@ -1,9 +1,12 @@
 import base64
-import ssl
 import logging
-from rest import *
+from rest import AppClient, RestXMLHandler, RestClient
 
 logger = logging.getLogger(__name__)
+
+
+class ACSError(Exception):
+    pass
 
 
 class ACSClient(AppClient):
@@ -28,20 +31,16 @@ class ACSClient(AppClient):
     def _req(self, *args, **kwargs):
         method = kwargs['method']
         if method not in ['GET', 'POST', 'PUT', 'DELETE']:
-            raise RestClientError("HTTP method {} is not supported".format(method))
+            raise ACSError("HTTP method {} is not supported".format(method))
 
         super(ACSClient, self)._req(*args, **kwargs)
 
 
-class ACSError(Exception):
-    pass
-
-
-class ACSRestClient(Rest3Client, ACSClient, RestXMLHandler):
+class ACSRestClient(RestClient, ACSClient, RestXMLHandler):
     """
     Method Resolution Order:
     ACSRestClient
-    Rest3Client
+    RestClient
     ACSClient
     AppClient
     RestXMLHandler

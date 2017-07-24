@@ -12,6 +12,8 @@ import fmc
 
 """
 from .rest import *
+from xml_handler import *
+from json_handler import *
 
 __author__ = "Chetankumar Phulpagare"
 __copyright__ = "Copyright 2017, Cisco"

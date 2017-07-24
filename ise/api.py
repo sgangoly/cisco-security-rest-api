@@ -1,10 +1,13 @@
 import base64
-import ssl
 import logging
 from collections import OrderedDict
-from rest import *
+from rest import AppClient, RestXMLHandler, RestClient
 
 logger = logging.getLogger(__name__)
+
+
+class ISEError(Exception):
+    pass
 
 
 class ISEClient(AppClient):
@@ -29,16 +32,12 @@ class ISEClient(AppClient):
     def _req(self, *args, **kwargs):
         method = kwargs['method']
         if method not in ['GET', 'POST', 'PUT', 'DELETE']:
-            raise RestClientError("HTTP method {} is not supported".format(method))
+            raise ISEError("HTTP method {} is not supported".format(method))
 
         super(ISEClient, self)._req(*args, **kwargs)
         
 
-class ISEError(Exception):
-    pass
-
-
-class ISERestClient(Rest3Client, ISEClient, RestXMLHandler):
+class ISERestClient(RestClient, ISEClient, RestXMLHandler):
     """
     Method Resolution Order:
     ISERestClient
